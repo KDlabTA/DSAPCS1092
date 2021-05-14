@@ -1,0 +1,308 @@
+//*******************************************************************/
+// Exercise 05: Sorting Algorithms by Wu, Yi-Hung@ICE.CYCU    2021
+//*******************************************************************/
+
+#include <iostream>                                         // cout, endl
+#include <fstream>                                          // open, is_open, close, ignore
+#include <string>                                           // string, find_last_of, substr
+#include <vector>                                           // vector, push_back
+#include <cstdlib>                                          // system, atoi
+#include <iomanip>                                          // setw
+#include <ctime>                                            // clock, CLOCKS_PER_SEC
+
+#define PAGE        40                                     // amount of display on screen
+#define RADIX       10                                      // number of unique digits
+#define BIG_INT     255                                     // integer upper bound
+#define SSORT       "select"                           // prefix of intermediate file name
+#define BSORT       "bubble"                           // prefix of intermediate file name
+#define MSORT       "merge"                          // prefix of intermediate file name
+#define QSORT       "quick"                                     // prefix of intermediate file name
+
+using namespace std;
+
+int getNO(int, int, string);                                // get a number from user
+
+class classList
+{   typedef struct cT
+    {   string  rawR;                                       // raw data of one record
+        int     gNO;                                        // number of graduates
+    } collegeType;
+
+    vector<collegeType> cSet;                   // set of output records
+    string              fileNO;                             // number to form a file name
+    string              sortNAME;                       // name of a sorting algorithm
+    clock_t             sortTIME;                           // sorting time
+    //*******************************************************************/
+    //  the above are private data members
+    //*******************************************************************/
+    void mergeMS(vector<collegeType> &, int, int, int);     // merge two halves
+    void recurMS(vector<collegeType> &, int, int);          // recursive version of merge sort
+    void partQS(vector<collegeType> &, int, int, int&);     // create two partitions by the pivot
+    void recurQS(vector<collegeType> &, int, int);          // recursive version of quick sort
+    void iterRS(vector<collegeType> &, int, int);           // iterative version of radix sort
+    //*******************************************************************/
+    //  the above are private methods
+    //*******************************************************************/
+public:
+    classList(): fileNO(""), sortNAME(""), sortTIME(0)
+    {   }                                                   // constructor: do nothing
+    classList(classList &obj): cSet(obj.cSet), fileNO(obj.fileNO), sortNAME(obj.sortNAME), sortTIME(obj.sortTIME)
+    {   }                                                   // constructor: copy data members
+
+    bool readF();                                           // read records from a file
+    void show();                                            // display the entire set of records on screen
+    void saveF();                                           // save all records into a file
+    void ssort();                                           // selection sort
+    void bsort();                                           // bubble sort
+    void msort();                                           // merge sort
+    void qsort(const string&);                                 // quick sort of two types
+    void clearUp()   {   cSet.clear();   fileNO.clear(); }  // erase the object content
+    ~classList()  {   clearUp();  }                         // destructor: destroy the object
+};  // class classList
+
+//*******************************************************************/
+// main program
+//*******************************************************************/
+int main(void)
+{   int command = 0;                                        // user command
+
+    do
+    {   classList   aList;                                  // initiate file objects
+
+        cout << endl << "******** Sorting Algorithms *********";
+        cout << endl << "* 0. QUIT                           *";
+        cout << endl << "* 1. Selection sort vs. Bubble sort *";
+        cout << endl << "* 2. Merge sort vs. Quick sort        *";
+        cout << endl << "*************************************";
+        cout << endl << "Input a choice(0, 1, 2): ";
+        cin >> command;                                     // get a command
+        switch (command)
+        {   case 0: break;
+            case 1: if (aList.readF())                      // read records from a file
+                    {   classList   sorted(aList);          // copy constructor
+
+                        sorted.ssort();                     // selection sort
+                        sorted.saveF();                     // save all records into a file
+                        aList.bsort();                      // bubble sort
+                        aList.saveF();                      // save all records into a file
+                    }   // end if
+                    break;
+            case 2: if (aList.readF())                      // read records from a file
+                    {   classList   sorted(aList);          // copy constructor
+
+                        sorted.msort();                     // merge sort
+                        sorted.saveF();                     // save all records into a file
+                        aList.qsort(QSORT);             // quick sort
+                        aList.saveF();                      // save all records into a file
+                    }   // end if
+                    break;
+            default: cout << endl << "Command does not exist!" << endl;
+        }	// end switch
+        aList.clearUp();                                    // clear up the space
+    } while (command != 0);                                 // '0': stop the program
+    system("pause");                                        // pause the display
+    return 0;
+}   // end main
+
+//*******************************************************************/
+// class classList methods
+//*******************************************************************/
+bool classList::readF()                                     // get records from a file
+{   string      fileName;                                   // input file name
+    fstream     inFile;                                     // input file handle
+    char        rBuf[BIG_INT];                              // buffer to keep one whole record
+
+    this->cSet.clear();                                     // for protection purpose
+    do
+    {   cout << endl << "Input 501, 502, ...[0]Quit): ";    // prompt message for input a file name
+        cin >> fileNO;
+        if (!fileNO.compare("0"))                           // No file to open, so quit
+            return false;
+        fileName = "input" + fileNO + ".txt";
+        inFile.open(fileName.c_str(), fstream::in);         // open a file
+        if (inFile.is_open())
+            break;
+        else                                                // failure to open a file
+            cout << endl << "### " << fileName << " does not exist! ###" << endl;                                                  // successfully open a file, so leave the loop
+    } while(true);   //end while
+    inFile.ignore(BIG_INT,'\n');                            // skip the first three line in file
+    inFile.ignore(BIG_INT,'\n');                            // because they are file header
+    inFile.ignore(BIG_INT,'\n');                            // indicates meta-data such as field names
+    while (inFile.getline(rBuf, BIG_INT, '\n'))             // retrieve one entire record from file
+    {   string      temp;                                   // duplicate a string in another format
+        collegeType oneC;                                   // keep one record with only the required fields
+        int         cNo = 0, pre = 0, pos = 0;              // indicators to extract each field in a record from left to right
+
+        temp.assign(rBuf);                                  // make a duplicate of the entire record
+        pos = temp.find_first_of('\t', pre);                // move to the end of the first field
+        while (pos != string::npos)
+        {   string  aString;
+            int     comma;
+
+            aString = temp.substr(pre, pos - pre);
+            if ((++cNo) == 9)
+            {   if ((comma = aString.find(",")) != string::npos)    // number in the form of " , "
+                {   aString = temp.substr(pre + 1, pos - pre - 2);
+                    aString.erase(comma - 1,1);
+                }   // end if
+                oneC.gNO = atoi(aString.c_str());           // copy the number of graduates
+            }   //end switch
+            pre = ++pos;
+            pos = temp.find_first_of('\t', pre);            // move to the end of the next field
+        }   //end inner while
+        oneC.rawR = temp;                                   // copy the raw data of one record
+        this->cSet.push_back(oneC);                         // put a record into the collection
+    }   //end outer while
+    inFile.close();                                         // close input file
+    if (this->cSet.size())
+    	return true;                                        // it succeeds if there is at least one records
+    return false;
+}   // end readF
+
+void classList::show()             	                        // display the entire set of records on screen
+{   cout << endl << "Number of records = " << this->cSet.size() << endl;
+    for (vector<collegeType>::iterator it = this->cSet.begin(); it < this->cSet.end(); ++it)
+        cout << it->rawR << endl;
+}   // end show
+
+void classList::saveF()                                     // output all records into a file
+{   string  fileName = this->sortNAME + fileNO + ".txt";    // output file name
+    fstream outFile;                                        // output file handle
+
+    if (this->sortNAME.empty())
+        return;
+    outFile.open(fileName.c_str(), fstream::out);           // create a new file to write
+    if (!outFile.is_open()) {                               // unable to create a file
+        cout << endl << "### " <<  fileName << " cannot be created! ###" << endl;
+        return;
+    }   //end if
+    for (vector<collegeType>::iterator it = this->cSet.begin(); it < this->cSet.end(); ++it)
+        outFile << it->rawR << endl;
+    outFile.close();                                        // close file
+}   // end saveF
+
+//*******************************************************************/
+// class classList methods on sorting algorithms
+//*******************************************************************/
+void classList::ssort()                                     // selection sort
+{   clock_t aTimer = 0;                                     // a timer
+    int     N = this->cSet.size();                          // number of records
+
+    this->sortNAME = SSORT;
+    aTimer = clock();                                       // start the timer
+    for (int mini, last = N-1; last > 0; --last)            // N-1 passes
+    {   mini = 0;
+        for (int idx = 1; idx < last+1; idx++)
+        {   
+				if ( this->cSet[mini].gNO < this->cSet[idx].gNO )
+				swap(this->cSet[mini] , this->cSet[idx] ) ;     // (1) add the code for selection sort 
+				;
+        }   // end inner-for
+        if (mini != last)
+            swap(this->cSet[mini],this->cSet[last]);
+    }   // end outer-for
+    this->sortTIME = clock() - aTimer;                      // calculate the elapse time
+    cout << endl << "selection sort: " << ((double)this->sortTIME) * 1000 / CLOCKS_PER_SEC << " ms" << endl;
+}   // end ssort
+
+void classList::bsort()                                     // bubble sort
+{   clock_t aTimer = 0;                                     // a timer
+    int     N = this->cSet.size();                          // number of records
+
+    this->sortNAME = BSORT;
+    aTimer = clock();                                       // start the timer
+    for (int pass = 1; pass < N; ++pass)                    // N-1 passes
+    {   for (int idx = 0; idx < N-pass; idx++)              // move max forward from [0] to [N-pass]
+        {   
+			if ( this->cSet[idx].gNO > this->cSet[idx+1].gNO )
+				swap(this->cSet[idx] , this->cSet[idx+1] ) ;  // (2) add the code for bubble sort 
+        }   // end inner-for
+    }   // end outer-for
+    this->sortTIME = clock() - aTimer;                      // calculate the elapse time
+    cout << endl << "bubble sort: " << ((double)this->sortTIME) * 1000 / CLOCKS_PER_SEC << " ms" << endl;
+}   // end bsort
+
+void classList::mergeMS(vector<collegeType> &A, int first, int mid, int last)  // merge two halves
+{   collegeType *tempArray = new collegeType [A.size()];    // temporary array
+    int first1 = first, last1  = mid;                       // the 1st half [first…mid]
+    int first2 = mid+1, last2 = last;                       // the 2nd half [mid+1...last]
+    int index = first;                                      // next available location
+
+    for (; (first1 <= last1) && (first2 <= last2); ++index)
+        if (A[first1].gNO >= A[first2].gNO)                 // stable: >=
+        {   tempArray[index] = A[first1];
+            ++first1;
+        }   // end if
+        else
+        {   tempArray[index] = A[first2];
+            ++first2;
+        }   // end else
+    for (; first1 <= last1; ++first1, ++index)
+        tempArray[index] = A[first1];                       // append the 1st half
+	// (3) add the code for merge sort part I.
+	for (; first2 <= last2; ++first2, ++index)
+        tempArray[index] = A[first2];										                       // append the 2nd half
+    for (index = first; index <= last; ++index)
+        A[index] = tempArray[index];                        // copy the merged result back
+    delete [] tempArray;                                    // release the space of temporary array
+}   //end mergeMS
+
+void classList::recurMS(vector<collegeType> &A, int first, int last)   // recursive version of merge sort
+{   if (first < last)
+    {   int mid = first + (last - first)/2;                 // middle point
+        recurMS(A, first, mid);                             // recursion to sort 1st half
+// (4) add the code for merge sort part II. 
+		recurMS(A, mid+1, last);		                        // recursion to sort 2nd half
+        mergeMS(A, first, mid, last);                       // merge two halves
+   }   // end if
+}   // end recurMS
+
+void classList::msort()                                     // merge sort
+{   clock_t aTimer = 0;                                     // a timer
+    int     N = this->cSet.size();                          // number of records
+
+    this->sortNAME = MSORT;
+    aTimer = clock();                                       // start the timer
+    recurMS(this->cSet,0,N-1);                              // recursive version of merge sort
+    this->sortTIME = clock() - aTimer;                      // calculate the elapse time
+    cout << endl << "merge sort: " << ((double)this->sortTIME) * 1000 / CLOCKS_PER_SEC << " ms" << endl;
+}   // end msort
+
+void classList::partQS(vector<collegeType> &A, int first, int last, int& pIDX)  // create two partitions by the pivot
+{   collegeType     pivotItem = A[first];                   // take the first element as the pivot
+    int             lastS1 = first;                         // the end of S1
+    int             firstUnknown = first+1;                 // the next position to scan
+
+    while (firstUnknown <= last)
+    {   if (A[firstUnknown].gNO > pivotItem.gNO)            // find an element belonging to S1
+        {   
+			++lastS1;										// (5) add the code for quick sort part I. 
+			swap(A[firstUnknown], A[lastS1]);				// swap it with the first element of S2
+        }   // end if
+        ++firstUnknown;
+    }   // end while
+    swap(A[first],A[lastS1]);                               // swap the pivot with the last element of S1
+    pIDX = lastS1;
+}   //end partQS
+
+void classList::recurQS(vector<collegeType> &A, int first, int last)   // recursive version of quick sort
+{   int pivotIndex;
+
+    if (first < last)
+    {   partQS(A, first, last, pivotIndex);                 // create the partition: S1, pivot, S2
+        recurQS(A, first, pivotIndex-1);                    // recursion to sort S1
+// (6) add the code for quick sort part II. 
+		recurQS(A, pivotIndex+1, last);						// recursion to sort S2
+    }   // end if
+}   // end recurQS
+
+void classList::qsort(const string& type)                      // quick sort of two types
+{   clock_t aTimer = 0;                                         // a timer
+    int     N = this->cSet.size();                          // number of records
+
+    this->sortNAME = type;
+    aTimer = clock();                                               // start the timer
+    recurQS(this->cSet,0,N-1);                              // recursive version of quick sort
+    this->sortTIME = clock() - aTimer;                      // calculate the elapse time
+    cout << endl << type << " sort: " << ((double)this->sortTIME) * 1000 / CLOCKS_PER_SEC << " ms" << endl;
+}   // end qsort
